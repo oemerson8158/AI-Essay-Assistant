@@ -1,11 +1,97 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-  <meta charset="UTF-8">
-  <title>AI Essay Assistant</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>AI Essay Assistant</title>
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="css/base.css">
 </head>
+
 <body>
-  <h1>AI Essay Assistant</h1>
-  <p>Coming soon.</p>
+
+    <!-- Loading screen: shown until Firebase says whether someone is signed
+         in, so a signed-in student never sees a flash of the login form. -->
+    <div id="loading-screen">
+        <p id="loading-text" class="tool-hint">Loading…</p>
+    </div>
+
+    <!-- Login screen -->
+    <div id="login-screen" style="display:none;">
+        <div class="auth-card">
+            <h1>AI Essay Assistant</h1>
+
+            <p id="auth-error" class="auth-error" role="alert" style="display:none;"></p>
+
+            <form id="auth-form" novalidate>
+                <label for="auth-email">Email</label>
+                <input type="email" id="auth-email" placeholder="you@example.com"
+                    autocomplete="email" autocapitalize="none" spellcheck="false">
+
+                <label for="auth-password">Password</label>
+                <input type="password" id="auth-password" placeholder="At least 6 characters"
+                    autocomplete="current-password">
+
+                <button type="submit" id="auth-submit" class="btn-primary auth-submit">Sign In</button>
+            </form>
+
+            <p class="auth-toggle">
+                <span id="auth-toggle-text">Don't have an account?</span>
+                <a href="#" id="auth-toggle-link">Create one</a>
+            </p>
+
+            <div class="auth-divider"><span>or</span></div>
+
+            <button type="button" id="auth-google" class="btn-secondary auth-google">Continue with Google</button>
+        </div>
+    </div>
+
+    <!-- Home screen. Phase 1: placeholder. Phase 3 builds the Templates /
+         Documents lists here. -->
+    <div id="home-screen" style="display:none;">
+        <div class="home-header">
+            <h1>AI Essay Assistant</h1>
+            <div class="home-header-actions">
+                <button id="home-sign-out" type="button" class="btn-secondary">Sign Out</button>
+                <button type="button" class="help-btn" data-help="home"
+                    title="How this screen works" aria-label="How this screen works"
+                    aria-haspopup="dialog" aria-expanded="false">?</button>
+            </div>
+        </div>
+        <p id="home-user" class="tool-hint"></p>
+        <p class="tool-hint">Your templates and documents will appear here once Phase 3 is built.</p>
+    </div>
+
+    <!-- Template wizard screens A, B, and C. Built in Phase 4. -->
+    <div id="wizard-screen" style="display:none;">
+        <p class="tool-hint">Template wizard (Phase 4).</p>
+    </div>
+
+    <!-- Template editor, reached from the Home menu. Built in Phase 4. -->
+    <div id="template-editor-screen" style="display:none;">
+        <p class="tool-hint">Template editor (Phase 4).</p>
+    </div>
+
+    <!-- Document editor. Built in Phase 5. -->
+    <div id="editor-screen" style="display:none;">
+        <p class="tool-hint">Editor (Phase 5).</p>
+    </div>
+
+    <!-- If the app's scripts haven't started after 10 seconds (usually a
+         lost connection, or the Firebase scripts were blocked), say so
+         instead of showing "Loading…" forever. -->
+    <script>
+        setTimeout(function () {
+            var loading = document.getElementById("loading-screen");
+            if (loading && loading.style.display !== "none") {
+                document.getElementById("loading-text").textContent =
+                    "Still loading… Check your connection, then refresh the page.";
+            }
+        }, 10000);
+    </script>
+
+    <script type="module" src="app.js"></script>
 </body>
+
 </html>

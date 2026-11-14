@@ -1,0 +1,449 @@
+/* AI Essay Assistant: base styles */
+/* Oliver Emerson - 2026 */
+
+/* Tokens, buttons, and the help popup come from the AI Document Reader so the
+   two apps look alike. Later phases add editor.css (the editor and page view)
+   and print.css (PDF export) beside this file. */
+
+/***************************************************************************
+ * TOKENS
+ *  Colors are the Reader's values, given names. Use the variables in new
+ *  styles so a color only ever needs changing in one place.
+ ***************************************************************************/
+
+:root {
+  --color-bg: #f7f7f7;
+  --color-surface: #ffffff;
+  --color-surface-alt: #fafafa;
+  --color-text: #333333;
+  --color-text-muted: #666666;
+  --color-border: #cccccc;
+  --color-border-soft: #dddddd;
+
+  --color-primary: #0078d4;
+  --color-primary-hover: #005fa3;
+  --color-primary-disabled: #a8cdea;
+
+  --color-neutral: #eeeeee;
+  --color-neutral-hover: #dddddd;
+
+  --color-danger: #bb0000;
+  --color-danger-text: #8a2b2b;
+  --color-danger-bg: #fdecec;
+  --color-danger-border: #f3b8b8;
+
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+
+  --font-body: Arial, sans-serif;
+}
+
+/***************************************************************************
+ * BASE
+ ***************************************************************************/
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-body);
+  background-color: var(--color-bg);
+  color: var(--color-text);
+}
+
+label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: bold;
+}
+
+/***************************************************************************
+ * SHARED COMPONENTS
+ *  Button and text styles reused across screens and sidebar tabs.
+ ***************************************************************************/
+
+.btn-primary {
+  height: 42px;
+  padding: 0 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  background-color: var(--color-primary);
+  color: white;
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+.btn-primary:hover {
+  background-color: var(--color-primary-hover);
+}
+
+.btn-primary:disabled {
+  background-color: var(--color-primary-disabled);
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  height: 42px;
+  padding: 0 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  background-color: var(--color-neutral);
+  color: var(--color-text);
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+.btn-secondary:hover {
+  background-color: var(--color-neutral-hover);
+}
+
+.btn-secondary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Small subdued label above a group of content */
+.section-heading {
+  font-size: 0.85em;
+  font-weight: 700;
+  color: #555;
+  margin: 18px 0 10px;
+}
+
+/* Instructional or status copy */
+.tool-hint {
+  font-size: 0.9em;
+  color: var(--color-text-muted);
+  margin: 0 0 14px;
+  line-height: 1.4;
+}
+
+/***************************************************************************
+ * SCREENS
+ *  Which one shows is decided by router.js, which sets each container's
+ *  display. Everything a screen needs to look right goes under its own id.
+ ***************************************************************************/
+
+#loading-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding: 20px;
+}
+
+#loading-screen .tool-hint {
+  margin: 0;
+}
+
+/* Login */
+
+#login-screen {
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding: 20px;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 400px;
+  padding: 30px;
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.auth-card h1 {
+  text-align: center;
+  margin: 0 0 24px;
+  font-size: 1.4em;
+}
+
+.auth-card input {
+  width: 100%;
+  padding: 10px;
+  font-size: 16px; /* 16px stops iPad Safari zooming the page on focus */
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  margin-bottom: 16px;
+}
+
+.auth-submit {
+  width: 100%;
+  margin-top: 4px;
+}
+
+.auth-error {
+  background: var(--color-danger-bg);
+  border: 1px solid var(--color-danger-border);
+  color: var(--color-danger-text);
+  border-radius: var(--radius-md);
+  padding: 10px;
+  font-size: 0.9em;
+  margin: 0 0 16px;
+}
+
+.auth-toggle {
+  text-align: center;
+  font-size: 0.9em;
+  color: #555;
+  margin: 14px 0 0;
+}
+
+.auth-toggle a {
+  color: var(--color-primary);
+  text-decoration: none;
+  font-weight: bold;
+}
+
+.auth-toggle a:hover {
+  text-decoration: underline;
+}
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  text-align: center;
+  color: #999;
+  font-size: 0.85em;
+  margin: 20px 0;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: "";
+  flex: 1;
+  border-bottom: 1px solid var(--color-border-soft);
+}
+
+.auth-divider span {
+  padding: 0 10px;
+}
+
+.auth-google {
+  width: 100%;
+}
+
+/* Home */
+
+#home-screen {
+  max-width: 800px;
+  margin: 40px auto;
+  padding: 0 20px;
+}
+
+.home-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+  gap: 12px;
+}
+
+.home-header h1 {
+  margin: 0;
+  font-size: 1.5em;
+}
+
+.home-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/***************************************************************************
+ * HELP ("?" button and step-by-step tutorial popup, help.js)
+ ***************************************************************************/
+
+.help-btn {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+  color: #777;
+  background: none;
+  border: 1px solid #bbb;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.help-btn:hover,
+.help-btn[aria-expanded="true"] {
+  color: #222;
+  background: var(--color-neutral);
+}
+
+#help-popup {
+  position: fixed;
+  z-index: 1100;
+  overflow-y: auto;
+  padding: 22px 22px 18px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius-xl);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.22);
+}
+
+#help-popup:focus {
+  outline: none;
+}
+
+.help-popup-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  font-size: 15px;
+  line-height: 1;
+  color: var(--color-text-muted);
+  background: none;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.help-popup-close:hover {
+  background: var(--color-neutral);
+  color: #222;
+}
+
+.help-popup-title {
+  margin: 0 28px 10px 0;
+  font-size: 1.15em;
+}
+
+.help-popup-text {
+  margin: 0 0 18px;
+  font-size: 0.95em;
+  line-height: 1.5;
+  color: #555;
+}
+
+.help-popup-list {
+  margin: 0 0 18px;
+  padding-left: 20px;
+  font-size: 0.95em;
+  line-height: 1.5;
+  color: #555;
+}
+
+.help-popup-list li {
+  margin-bottom: 8px;
+}
+
+.help-popup-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.help-popup-left,
+.help-popup-right {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.help-popup-pill {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  font-size: 13px;
+  color: #444;
+  background: var(--color-neutral);
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.help-popup-pill:hover {
+  background: var(--color-neutral-hover);
+}
+
+.help-popup-pill-active,
+.help-popup-pill-active:hover {
+  color: white;
+  background: var(--color-primary);
+}
+
+.help-popup-link {
+  padding: 4px 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-primary);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.help-popup-link:hover {
+  text-decoration: underline;
+}
+
+.help-popup-back,
+.help-popup-next {
+  padding: 7px 14px;
+  font-size: 14px;
+  border: none;
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+}
+
+.help-popup-back {
+  color: var(--color-text);
+  background: var(--color-neutral);
+}
+
+.help-popup-back:hover {
+  background: var(--color-neutral-hover);
+}
+
+.help-popup-next {
+  color: white;
+  background: var(--color-primary);
+}
+
+.help-popup-next:hover {
+  background: var(--color-primary-hover);
+}
+
+/***************************************************************************
+ * ACCESSIBILITY
+ *  Last, so these override the styles above.
+ ***************************************************************************/
+
+button:focus-visible,
+select:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
