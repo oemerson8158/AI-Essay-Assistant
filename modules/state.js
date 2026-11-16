@@ -17,9 +17,21 @@
 // Names of the events the app emits. Use these instead of typing the strings,
 // so a typo is a loud "undefined" rather than a listener that never fires.
 const EVENTS = {
-  AUTH_CHANGED: "auth:changed",     // detail: the Firebase user, or null
-  SCREEN_CHANGED: "screen:changed", // detail: { from, to }
-  STATE_CHANGE: "state:change"      // detail: { [key]: newValue } for each changed key
+  AUTH_CHANGED: "auth:changed",       // detail: the Firebase user, or null
+  SCREEN_CHANGED: "screen:changed",   // detail: { from, to }
+  STATE_CHANGE: "state:change",       // detail: { [key]: newValue } for each changed key
+
+  // The Home screen asks for a document or template to be opened. detail is
+  // the record from the list ({ id, title, ... }), or at least { id, title }
+  // for a brand-new one. A listener should treat only id as reliable and read
+  // the record again from Firestore. (The placeholder screens in
+  // placeholders.js listen for these now; Phases 4 and 5 replace them.)
+  OPEN_DOCUMENT: "document:open",
+  OPEN_TEMPLATE: "template:open",
+
+  // Something (an editor's Home button, say) wants to go back to the Home
+  // screen. app.js shows Home and reloads its lists.
+  HOME_REQUESTED: "home:requested"
 };
 
 // Shared application data. Later phases add keys here (the open document,
