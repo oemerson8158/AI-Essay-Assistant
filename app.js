@@ -1,116 +1,155 @@
 ///////////////////////////////////////////////////////////////////////////
-// state.js
-//  Shared application state and a tiny event bus.
+// app.js
+//  Entry point of the AI Essay Assistant. It wires the screens together and
+//  decides which one shows, based on whether someone is signed in.
 //
-//  Modules read `state` directly and change it with setState(). When one
-//  module needs to tell another that something happened, it emit()s an
-//  event and the other module on()s it. Neither imports the other, which is
-//  what replaces the circular imports between app.js and the Reader's
-//  feature modules.
+//  Unlike the Reader's app.js, this file owns no shared state and is not
+//  imported by the feature modules. State lives in modules/state.js, and
+//  modules talk to each other through its event bus, so there are no
+//  circular imports.
 //
-//  Rule of thumb: state.js imports nothing from this project, so any file
-//  may import it without creating a cycle.
+//  Startup is deliberately noisy and hard to hang: each step logs a line
+//  starting "APP:" to the console, any failure is shown on the loading
+//  screen, and if Firebase's sign-in listener hasn't reported after a few
+//  seconds, Firebase is asked directly.
 //
 //  Oliver Emerson - 2026
 ///////////////////////////////////////////////////////////////////////////
 
-// Names of the events the app emits. Use these instead of typing the strings,
-// so a typo is a loud "undefined" rather than a listener that never fires.
-const EVENTS = {
-  AUTH_CHANGED: "auth:changed",       // detail: the Firebase user, or null
-  SCREEN_CHANGED: "screen:changed",   // detail: { from, to }
-  STATE_CHANGE: "state:change",       // detail: { [key]: newValue } for each changed key
+import { onAuthChange, auth } from "./modules/firebase.js";
+import { state, setState, on, emit, EVENTS } from "./modules/state.js";
+import { showScreen } from "./modules/router.js";
+import "./modules/help.js"; // registers the "?" popup's listeners
+import { initLogin, resetLoginForm } from "./modules/login.js";
+import { initHome, loadHome } from "./modules/home.js";
+import { initPlaceholders } from "./modules/placeholders.js";
 
-  // The Home screen asks for a document or template to be opened. detail is
-  // the record from the list ({ id, title, ... }), or at least { id, title }
-  // for a brand-new one. A listener should treat only id as reliable and read
-  // the record again from Firestore. (The placeholder screens in
-  // placeholders.js listen for these now; Phases 4 and 5 replace them.)
-  OPEN_DOCUMENT: "document:open",
-  OPEN_TEMPLATE: "template:open",
+// If Firebase's listener hasn't reported by now, ask Firebase directly.
+const AUTH_FALLBACK_MS = 8000;
 
-  // Something (an editor's Home button, say) wants to go back to the Home
-  // screen. app.js shows Home and reloads its lists.
-  HOME_REQUESTED: "home:requested"
-};
+const log = (...args) => console.log("APP:", ...args);
 
-// Shared application data. Later phases add keys here (the open document,
-// its tabs, the applied template, and so on).
-const state = {
-  currentUser: null,         // the signed-in Firebase user, or null
-  currentScreen: "loading",  // see SCREENS in router.js
-  currentTemplateId: null,   // template open in the template editor
-  currentDocId: null         // document open in the editor
-};
-
-const listeners = new Map(); // event name -> Set of handlers
+log("app.js started");
 
 ///////////////////////////////////////////////////////////////////////////
-//  Function: on
-//  Inputs: event (string), handler(detail)
-//  Outputs: A function that removes this handler when called
+//  Function: reportStartupError
+//  Inputs: err (anything thrown)
+//  Outputs: Logs it, and while the loading screen is still up, shows it
+//    there so a failure is never silent
 ///////////////////////////////////////////////////////////////////////////
-function on(event, handler) {
-  if (!listeners.has(event)) listeners.set(event, new Set());
-  listeners.get(event).add(handler);
-  return () => off(event, handler);
+function reportStartupError(err) {
+  console.error("APP: startup problem:", err);
+
+  const loading = document.getElementById("loading-screen");
+  const text = document.getElementById("loading-text");
+  if (loading && text && loading.style.display !== "none") {
+    text.textContent = `The app couldn't start: ${(err && err.message) || err}`;
+  }
 }
 
 ///////////////////////////////////////////////////////////////////////////
-//  Function: off
-//  Inputs: event (string), handler (the same function passed to on)
-//  Outputs: Removes the handler if it was registered
+//  Wiring the screens
+//  Each is wrapped separately, so a problem in one (say, the placeholder
+//  screens) doesn't stop the login screen from working.
 ///////////////////////////////////////////////////////////////////////////
-function off(event, handler) {
-  const set = listeners.get(event);
-  if (!set) return;
-  set.delete(handler);
-  if (set.size === 0) listeners.delete(event);
-}
+
+[
+  ["login", initLogin],
+  ["home", initHome],
+  ["placeholders", initPlaceholders]
+].forEach(([name, init]) => {
+  try {
+    init();
+    log(`${name} wired`);
+  } catch (err) {
+    reportStartupError(new Error(`Couldn't set up the ${name} screen: ${err && err.message}`));
+  }
+});
 
 ///////////////////////////////////////////////////////////////////////////
-//  Function: emit
-//  Inputs: event (string), detail (anything, passed to each handler)
-//  Outputs: Calls every handler registered for the event
-//  Summary: Each handler runs inside its own try/catch, so one handler that
-//    throws can't stop the others from running or break the code that
-//    emitted the event.
+//  Going home
+//  Any screen can ask for Home by emitting HOME_REQUESTED.
 ///////////////////////////////////////////////////////////////////////////
-function emit(event, detail) {
-  const set = listeners.get(event);
-  if (!set) return;
-  // Copy first, so a handler that unsubscribes itself doesn't disturb the loop.
-  [...set].forEach(handler => {
+
+on(EVENTS.HOME_REQUESTED, () => {
+  if (!state.currentUser) return;
+  showScreen("home");
+  loadHome();
+});
+
+///////////////////////////////////////////////////////////////////////////
+//  Auth state
+//  Drives which screen shows on load and after sign-in or sign-out. Firebase
+//  calls this once as soon as it knows whether someone is signed in (until
+//  then the loading screen shows, so a signed-in student never sees a
+//  flash of the login form), and again on every sign-in and sign-out.
+///////////////////////////////////////////////////////////////////////////
+
+let authReported = false; // true once handleAuth has run at least once
+
+///////////////////////////////////////////////////////////////////////////
+//  Function: handleAuth
+//  Inputs: user (the Firebase user, or null)
+//  Outputs: Records who is signed in, tells the other modules, and shows
+//    Home or the login screen
+//  Summary: If anything in here fails, the error is shown and the login
+//    screen is displayed anyway, so the app never stays on "Loading…".
+///////////////////////////////////////////////////////////////////////////
+function handleAuth(user) {
+  authReported = true;
+  log("sign-in state received:", user ? (user.email || user.uid) : "signed out");
+
+  try {
+    const previousUid = state.currentUser ? state.currentUser.uid : null;
+    const nextUid = user ? user.uid : null;
+
+    setState({ currentUser: user });
+
+    // A different person (or nobody) is now signed in: forget what was open.
+    if (previousUid !== nextUid) {
+      setState({ currentTemplateId: null, currentDocId: null });
+    }
+
+    resetLoginForm();
+
+    // Other modules listen for this to stop running work and clear their
+    // screens, for example Home empties its lists on sign-out, and later an
+    // AI run for the last user is cancelled.
+    emit(EVENTS.AUTH_CHANGED, user);
+
+    if (user) {
+      showScreen("home");
+      loadHome();
+      log("showing home");
+    } else {
+      showScreen("login");
+      log("showing login");
+    }
+  } catch (err) {
+    reportStartupError(err);
     try {
-      handler(detail);
-    } catch (err) {
-      console.error(`STATE: a handler for "${event}" threw:`, err);
+      showScreen("login");
+    } catch {
+      // Nothing more can be done.
     }
-  });
+  }
 }
 
-///////////////////////////////////////////////////////////////////////////
-//  Function: setState
-//  Inputs: patch (an object of keys to change)
-//  Outputs: Updates state, then emits "state:change" with only the keys whose
-//    value actually changed (nothing is emitted if none did)
-//  Summary: Warns about a key that isn't part of `state`, which is almost
-//    always a typo.
-///////////////////////////////////////////////////////////////////////////
-function setState(patch) {
-  const changed = {};
+onAuthChange(handleAuth);
+log("waiting for Firebase's sign-in state");
 
-  Object.keys(patch).forEach(key => {
-    if (!(key in state)) {
-      console.warn(`STATE: setState got an unknown key "${key}". Add it to state in state.js.`);
-    }
-    if (state[key] !== patch[key]) {
-      state[key] = patch[key];
-      changed[key] = patch[key];
-    }
-  });
+// Fallback: the listener normally answers within a second or two. If it
+// hasn't by now, ask Firebase directly rather than leave the student on
+// "Loading…".
+setTimeout(async () => {
+  if (authReported) return;
 
-  if (Object.keys(changed).length > 0) emit(EVENTS.STATE_CHANGE, changed);
-}
-
-export { state, setState, on, off, emit, EVENTS };
+  console.warn(`APP: Firebase's listener hasn't reported after ${AUTH_FALLBACK_MS / 1000}s. Asking Firebase directly.`);
+  try {
+    await auth.authStateReady();
+  } catch (err) {
+    reportStartupError(err);
+    return;
+  }
+  if (!authReported) handleAuth(auth.currentUser);
+}, AUTH_FALLBACK_MS);

@@ -97,20 +97,48 @@
         </div>
     </div>
 
-    <!-- If the app's scripts haven't started after 10 seconds (usually a
-         lost connection, or the Firebase scripts were blocked), say so
-         instead of showing "Loading…" forever. -->
-    <script>
-        setTimeout(function () {
-            var loading = document.getElementById("loading-screen");
-            if (loading && loading.style.display !== "none") {
-                document.getElementById("loading-text").textContent =
-                    "Still loading… Check your connection, then refresh the page.";
-            }
-        }, 10000);
-    </script>
+    <script type="module" src="app.js" id="app-script"></script>
 
-    <script type="module" src="app.js"></script>
+    <!-- Startup watchdog. If the app's scripts fail to load or crash while
+         starting, say why on the loading screen instead of showing
+         "Loading…" forever (this also covers devices with no console, like
+         the iPad). It stays quiet once the app has started. -->
+    <script>
+        (function () {
+            function loadingScreenIsUp() {
+                var loading = document.getElementById("loading-screen");
+                return loading && loading.style.display !== "none";
+            }
+
+            function showStartupError(detail) {
+                if (!loadingScreenIsUp()) return;
+                document.getElementById("loading-text").textContent =
+                    "The app couldn't start. " + detail;
+                console.error("STARTUP:", detail);
+            }
+
+            // A file in the app's module graph couldn't be fetched (404, blocked, offline).
+            document.getElementById("app-script").addEventListener("error", function () {
+                showStartupError("One of its files didn't load. Check that every file is uploaded to the right folder, then hard-refresh (Ctrl+Shift+R).");
+            });
+
+            // A file loaded but failed while starting (a syntax error, a missing export, a crash).
+            window.addEventListener("error", function (e) {
+                showStartupError(e.message || "Unknown error.");
+            });
+            window.addEventListener("unhandledrejection", function (e) {
+                showStartupError(String((e.reason && e.reason.message) || e.reason));
+            });
+
+            // Nothing failed, but nothing finished either (usually a lost connection).
+            setTimeout(function () {
+                if (loadingScreenIsUp() && document.getElementById("loading-text").textContent === "Loading…") {
+                    document.getElementById("loading-text").textContent =
+                        "Still loading… Check your connection, then refresh the page.";
+                }
+            }, 10000);
+        })();
+    </script>
 </body>
 
 </html>
