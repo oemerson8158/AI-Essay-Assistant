@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Extractor check</title>
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="../css/base.css">
+    <style>
+        body { padding: 24px; }
+        main { max-width: 900px; margin: 0 auto; }
+        h1 { font-size: 1.3em; margin: 0 0 6px; }
+        .panel { background: var(--color-surface); border: 1px solid var(--color-border-soft); border-radius: var(--radius-lg); padding: 16px; margin-bottom: 16px; }
+        textarea { width: 100%; height: 110px; padding: 10px; font-size: 14px; border: 1px solid var(--color-border); border-radius: var(--radius-md); }
+        .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 10px; }
+        .result h2 { font-size: 1.05em; margin: 0 0 8px; overflow-wrap: anywhere; }
+        .facts { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; font-size: 0.9em; margin: 0 0 10px; }
+        .facts dt { color: var(--color-text-muted); }
+        .facts dd { margin: 0; }
+        .warn { color: #8a5a00; font-size: 0.9em; margin: 4px 0; }
+        .err { color: var(--color-danger); font-size: 0.95em; }
+        details { border-top: 1px solid var(--color-border-soft); padding: 8px 0; }
+        summary { cursor: pointer; font-size: 0.9em; }
+        pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; line-height: 1.5; background: var(--color-surface-alt); padding: 10px; border-radius: var(--radius-md); margin: 8px 0 0; }
+    </style>
+</head>
+
+<body>
+    <main>
+        <h1>Extractor check</h1>
+        <p class="tool-hint">Developer page for <code>modules/extract.js</code>. Open it through Live Server (or your deployed site at <code>/tests/extract-check.html</code>). Nothing is uploaded or saved; files are read in your browser. Try a clean PDF, a two-column PDF, a scanned PDF, a Word file, and a text file.</p>
+
+        <div class="panel">
+            <label for="files">Choose files (.pdf, .docx, .txt)</label>
+            <input type="file" id="files" accept=".txt,.pdf,.docx" multiple>
+            <label for="pasted" style="margin-top:14px;">Or paste text</label>
+            <textarea id="pasted" placeholder="Paste text here..."></textarea>
+            <div class="row">
+                <button id="run-paste" type="button" class="btn-secondary">Check pasted text</button>
+                <label style="margin:0; font-weight:normal;">Character limit
+                    <select id="limit">
+                        <option value="200000">200,000 (a source)</option>
+                        <option value="60000">60,000 (custom template)</option>
+                    </select>
+                </label>
+            </div>
+        </div>
+
+        <div id="results"></div>
+    </main>
+
+    <script type="module">
+        import { extractFile, extractPastedText, ExtractError, approxWords } from "../modules/extract.js";
+
+        const resultsEl = document.getElementById("results");
+        const maxChars = () => Number(document.getElementById("limit").value);
+
+        function addFact(list, label, value) {
+            const dt = document.createElement("dt");
+            dt.textContent = label;
+            const dd = document.createElement("dd");
+            dd.textContent = value;
+            list.append(dt, dd);
+        }
+
+        function startCard(title) {
+            const card = document.createElement("div");
+            card.className = "panel result";
+            const h2 = document.createElement("h2");
+            h2.textContent = title;
+            card.appendChild(h2);
+            resultsEl.prepend(card);
+            return card;
+        }
+
+        function showError(card, err) {
+            const p = document.createElement("p");
+            p.className = "err";
+            p.textContent = err instanceof ExtractError
+                ? `Rejected (${err.code}): ${err.message}`
+                : `Unexpected error: ${err && err.message}`;
+            card.appendChild(p);
+            if (!(err instanceof ExtractError)) console.error(err);
+        }
+
+        function showResult(card, result, ms) {
+            const facts = document.createElement("dl");
+            facts.className = "facts";
+            addFact(facts, "Kind", result.kind);
+            addFact(facts, "Pages", `${result.pageCount}${result.paged ? "" : " (pieces; this file has no real pages)"}`);
+            addFact(facts, "Characters", `${result.charCount.toLocaleString()} (about ${approxWords(result.charCount).toLocaleString()} words)`);
+            addFact(facts, "Printed page labels", result.hasPageLabels ? "yes" : "no");
+            addFact(facts, "Labels", result.pages.slice(0, 12).map(p => p.label === null ? "–" : p.label).join(", ") + (result.pageCount > 12 ? ", …" : ""));
+            addFact(facts, "Time", `${ms} ms`);
+            card.appendChild(facts);
+
+            result.warnings.forEach(text => {
+                const p = document.createElement("p");
+                p.className = "warn";
+                p.textContent = "⚠ " + text;
+                card.appendChild(p);
+            });
+
+            const copy = document.createElement("button");
+            copy.type = "button";
+            copy.className = "btn-secondary";
+            copy.textContent = "Copy all text";
+            copy.addEventListener("click", async () => {
+                try {
+                    await navigator.clipboard.writeText(result.pages.map(p => p.text).join("\n\n=====\n\n"));
+                    copy.textContent = "Copied!";
+                } catch {
+                    copy.textContent = "Couldn't copy";
+                }
+                setTimeout(() => { copy.textContent = "Copy all text"; }, 1500);
+            });
+            card.appendChild(copy);
+
+            result.pages.forEach((page, i) => {
+                const details = document.createElement("details");
+                if (i === 0) details.open = true;
+                const summary = document.createElement("summary");
+                const label = page.label === null ? `piece ${page.index + 1}` : `page ${page.label}`;
+                summary.textContent = `${label} · ${page.text.length.toLocaleString()} characters`;
+                const pre = document.createElement("pre");
+                pre.textContent = page.text || "(no text)";
+                details.append(summary, pre);
+                card.appendChild(details);
+            });
+        }
+
+        document.getElementById("files").addEventListener("change", async (e) => {
+            for (const file of [...e.target.files]) {
+                const card = startCard(file.name);
+                const status = document.createElement("p");
+                status.className = "tool-hint";
+                status.textContent = "Reading...";
+                card.appendChild(status);
+
+                const started = performance.now();
+                try {
+                    const result = await extractFile(file, {
+                        maxChars: maxChars(),
+                        onProgress: ({ done, total }) => { status.textContent = `Reading page ${done} of ${total}...`; }
+                    });
+                    status.remove();
+                    showResult(card, result, Math.round(performance.now() - started));
+                } catch (err) {
+                    status.remove();
+                    showError(card, err);
+                }
+            }
+            e.target.value = "";
+        });
+
+        document.getElementById("run-paste").addEventListener("click", () => {
+            const card = startCard("Pasted text");
+            const started = performance.now();
+            try {
+                const result = extractPastedText(document.getElementById("pasted").value, { maxChars: maxChars() });
+                showResult(card, result, Math.round(performance.now() - started));
+            } catch (err) {
+                showError(card, err);
+            }
+        });
+    </script>
+</body>
+
+</html>

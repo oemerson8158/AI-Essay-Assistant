@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Personalize check</title>
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="../css/base.css">
+    <style>
+        body { padding: 24px; }
+        main { max-width: 1000px; margin: 0 auto; }
+        h1 { font-size: 1.3em; margin: 0 0 6px; }
+        .panel { background: var(--color-surface); border: 1px solid var(--color-border-soft); border-radius: var(--radius-lg); padding: 16px; margin-bottom: 16px; }
+        textarea { width: 100%; height: 64px; padding: 8px; font-size: 14px; font-family: inherit; border: 1px solid var(--color-border); border-radius: var(--radius-md); margin-bottom: 10px; }
+        .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+        .row button { height: 34px; font-size: 14px; }
+        table.themes { width: 100%; border-collapse: collapse; font-size: 14px; }
+        table.themes td { padding: 6px 4px; border-top: 1px solid var(--color-border-soft); }
+        table.themes td:last-child { text-align: right; }
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 12px; font-weight: 700; }
+        .badge-ok { background: #eaf7e6; color: #2f6b23; }
+        .badge-skip { background: #eee; color: #444; }
+        .badge-warn { background: #fff3d6; color: #8a5a00; }
+        .badge-err { background: var(--color-danger-bg); color: var(--color-danger-text); }
+        .result h2 { font-size: 1.05em; margin: 0 0 8px; }
+        .meta { font-size: 0.88em; color: var(--color-text-muted); margin: 6px 0; }
+        .changes { margin: 8px 0; padding-left: 20px; font-size: 0.92em; }
+        .verdict { font-size: 0.9em; margin: 6px 0; }
+        table.diff { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
+        table.diff th, table.diff td { text-align: left; vertical-align: top; padding: 5px 6px; border-top: 1px solid var(--color-border-soft); }
+        table.diff th { color: var(--color-text-muted); font-weight: 700; }
+        .before { color: #777; }
+        .after { color: #1f4d78; }
+        details { margin-top: 8px; font-size: 0.9em; }
+        summary { cursor: pointer; }
+        #status { min-height: 1.4em; }
+    </style>
+</head>
+
+<body>
+    <main>
+        <h1>Personalize check</h1>
+        <p class="tool-hint">Developer page for <code>/template/personalize</code> and <code>modules/personalize.js</code>. It calls the real worker and the real model, so you must be signed in (sign in on the main app first, then open or reload this page). Each AI call uses part of your free per-minute and daily Groq allowance, and runs one after another, waiting out the rate limit. Try a few themes before "Run all".</p>
+
+        <div class="panel">
+            <p id="auth-line" class="tool-hint" style="margin-bottom:8px;">Checking sign-in...</p>
+            <p id="status" class="tool-hint" style="margin-bottom:0;"></p>
+        </div>
+
+        <div class="panel">
+            <div class="row">
+                <strong>Answer set:</strong>
+                <button type="button" class="btn-secondary" data-preset="filled">Everything filled in</button>
+                <button type="button" class="btn-secondary" data-preset="blank">Everything blank</button>
+                <button type="button" class="btn-secondary" data-preset="mixed">Mix of "no" and real</button>
+            </div>
+            <label for="a-about">About (what the essay is about)</label>
+            <textarea id="a-about" maxlength="1500"></textarea>
+            <label for="a-prompt">Assignment prompt</label>
+            <textarea id="a-prompt" maxlength="1500"></textarea>
+            <label for="a-requirements">Requirements</label>
+            <textarea id="a-requirements" maxlength="1500"></textarea>
+            <p class="tool-hint" style="margin:0;">Whatever is in the boxes when you click Run is what is used. Answers like "no", "none" and "N/A" should be dropped before anything is sent.</p>
+        </div>
+
+        <div class="panel">
+            <div class="row">
+                <button id="run-all" type="button" class="btn-primary" disabled>Run all 10 themes</button>
+                <button id="stop" type="button" class="btn-secondary" disabled>Stop</button>
+                <button id="copy-report" type="button" class="btn-secondary">Copy report</button>
+                <label style="margin:0; font-weight:normal;"><input type="checkbox" id="allow-structure" checked> Allow adding/removing sections</label>
+            </div>
+            <table class="themes" id="theme-table"></table>
+        </div>
+
+        <div id="results"></div>
+    </main>
+
+    <script type="module">
+        import { personalizeTemplate, cleanAnswers } from "../modules/personalize.js";
+        import { DEFAULT_THEMES, getDefaultTheme } from "../modules/defaultTemplates.js";
+        import { onAuthChange } from "../modules/firebase.js";
+
+        const PRESETS = {
+            filled: {
+                about: "How social media use affects the sleep habits of high school students",
+                prompt: "Evaluate whether high schools should start the school day later. Use evidence to support your position.",
+                requirements: "Five paragraphs. Must include a counterargument and cite at least three sources."
+            },
+            blank: { about: "", prompt: "", requirements: "" },
+            mixed: {
+                about: "Symbolism and the American Dream in The Great Gatsby",
+                prompt: "no",
+                requirements: "N/A"
+            }
+        };
+
+        const $ = id => document.getElementById(id);
+        const resultsEl = $("results");
+        const report = [];           // plain-text lines, for "Copy report"
+        let signedIn = false;
+        let running = false;
+        let stopRequested = false;
+
+        function setPreset(name) {
+            $("a-about").value = PRESETS[name].about;
+            $("a-prompt").value = PRESETS[name].prompt;
+            $("a-requirements").value = PRESETS[name].requirements;
+            document.querySelectorAll("[data-preset]").forEach(b => { b.dataset.active = String(b.dataset.preset === name); });
+            currentSetName = name;
+        }
+        let currentSetName = "filled";
+        document.querySelectorAll("[data-preset]").forEach(btn => btn.addEventListener("click", () => setPreset(btn.dataset.preset)));
+        ["a-about", "a-prompt", "a-requirements"].forEach(id => $(id).addEventListener("input", () => { currentSetName = "custom"; }));
+        setPreset("filled");
+
+        function currentAnswers() {
+            return { about: $("a-about").value, prompt: $("a-prompt").value, requirements: $("a-requirements").value };
+        }
+
+        function syncButtons() {
+            const disabled = !signedIn || running;
+            document.querySelectorAll("[data-run]").forEach(b => { b.disabled = disabled; });
+            $("run-all").disabled = disabled;
+            $("stop").disabled = !running;
+        }
+
+        // ---- the theme table ----
+        DEFAULT_THEMES.forEach(theme => {
+            const tr = document.createElement("tr");
+            const name = document.createElement("td");
+            name.textContent = `${theme.name} (${theme.category}, ${theme.sections.length} sections)`;
+            const action = document.createElement("td");
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "btn-secondary";
+            btn.style.height = "32px";
+            btn.style.fontSize = "13px";
+            btn.dataset.run = theme.themeId;
+            btn.textContent = "Run";
+            btn.disabled = true;
+            btn.addEventListener("click", () => runThemes([theme.themeId]));
+            action.appendChild(btn);
+            tr.append(name, action);
+            $("theme-table").appendChild(tr);
+        });
+
+        // ---- auth ----
+        onAuthChange(user => {
+            signedIn = !!user;
+            $("auth-line").textContent = user
+                ? `Signed in as ${user.email || user.uid}.`
+                : "Not signed in. Sign in on the main app (index.html), then reload this page.";
+            syncButtons();
+        });
+
+        // ---- showing a result ----
+        function badge(text, kind) {
+            const span = document.createElement("span");
+            span.className = `badge badge-${kind}`;
+            span.textContent = text;
+            return span;
+        }
+
+        function addParagraph(card, className, text) {
+            const p = document.createElement("p");
+            p.className = className;
+            p.textContent = text;
+            card.appendChild(p);
+            return p;
+        }
+
+        // The independent check: every original id, label, and name is still there.
+        function structureVerdict(original, result) {
+            const byId = new Map(result.sections.map(s => [s.id, s]));
+            const removed = new Set(result.changes.filter(c => c.kind === "removed").map(c => c.sectionId));
+            for (const section of original) {
+                if (removed.has(section.id)) continue;
+                const after = byId.get(section.id);
+                if (!after) return `Section ${section.id} is missing.`;
+                if (after.name !== section.name) return `Section ${section.id}'s name changed.`;
+                if (after.fields.map(f => f.id + "|" + f.label).join() !== section.fields.map(f => f.id + "|" + f.label).join()) {
+                    return `Section ${section.id}'s fields changed.`;
+                }
+            }
+            const added = result.sections.filter(s => !original.some(o => o.id === s.id)).length;
+            if (added > 2) return `${added} sections were added (the limit is 2).`;
+            return null;
+        }
+
+        function showDiff(card, original, result) {
+            const rows = [];
+            const originalById = new Map(original.map(s => [s.id, s]));
+
+            result.sections.forEach(section => {
+                const source = originalById.get(section.id);
+                if (!source) {
+                    section.fields.forEach(f => rows.push([`NEW: ${section.name}`, f.label, "", f.prompt]));
+                    return;
+                }
+                section.fields.forEach((f, i) => {
+                    if (f.prompt !== source.fields[i].prompt) rows.push([section.name, f.label, source.fields[i].prompt, f.prompt]);
+                });
+            });
+            if (rows.length === 0) return;
+
+            const details = document.createElement("details");
+            details.open = rows.length <= 8;
+            const summary = document.createElement("summary");
+            summary.textContent = `${rows.length} changed prompt${rows.length === 1 ? "" : "s"} (before / after)`;
+            details.appendChild(summary);
+
+            const table = document.createElement("table");
+            table.className = "diff";
+            const head = document.createElement("tr");
+            ["Section", "Field", "Before", "After"].forEach(text => {
+                const th = document.createElement("th");
+                th.textContent = text;
+                head.appendChild(th);
+            });
+            table.appendChild(head);
+            rows.forEach(([sectionName, label, before, after]) => {
+                const tr = document.createElement("tr");
+                [sectionName, label, before, after].forEach((text, i) => {
+                    const td = document.createElement("td");
+                    td.textContent = text;
+                    if (i === 2) td.className = "before";
+                    if (i === 3) td.className = "after";
+                    tr.appendChild(td);
+                });
+                table.appendChild(tr);
+            });
+            details.appendChild(table);
+            card.appendChild(details);
+        }
+
+        async function runOne(themeId) {
+            const theme = getDefaultTheme(themeId);
+            const answers = currentAnswers();
+            const cleaned = cleanAnswers(answers);
+            const setLabel = currentSetName;
+
+            const card = document.createElement("div");
+            card.className = "panel result";
+            const h2 = document.createElement("h2");
+            h2.textContent = `${theme.name}  ·  answers: ${setLabel}`;
+            card.appendChild(h2);
+            resultsEl.prepend(card);
+
+            const answerSummary = ["about", "prompt", "requirements"].map(k => `${k}: ${cleaned[k] ? "kept" : "dropped"}`).join(", ");
+            addParagraph(card, "meta", `Sent after cleaning — ${answerSummary}`);
+
+            const started = performance.now();
+            const result = await personalizeTemplate({
+                sections: theme.sections,
+                answers,
+                allowStructure: $("allow-structure").checked,
+                shouldStop: () => stopRequested,
+                setStatus: text => { $("status").textContent = `${theme.name}: ${text}`; }
+            });
+            const ms = Math.round(performance.now() - started);
+            $("status").textContent = "";
+
+            const lines = [`## ${theme.name} — answers: ${setLabel} (${answerSummary}) — ${ms} ms`];
+
+            if (result.cancelled) {
+                card.appendChild(badge("stopped", "skip"));
+                lines.push("stopped");
+            } else if (!result.ok) {
+                card.appendChild(badge("request failed", "err"));
+                addParagraph(card, "verdict", result.message);
+                lines.push(`REQUEST FAILED: ${result.message}`);
+            } else if (result.skipped) {
+                card.appendChild(badge("skipped: no AI call", "skip"));
+                addParagraph(card, "verdict", `Nothing usable to personalize with. The template came back unchanged (${result.sections.length} sections).`);
+                lines.push("skipped (no usable answers, no AI call)");
+            } else if (result.fallback) {
+                card.appendChild(badge("fell back to the standard template", "warn"));
+                addParagraph(card, "verdict", result.message || "(no message)");
+                lines.push(`FALLBACK: ${result.message}`);
+            } else {
+                card.appendChild(badge("personalized", "ok"));
+                const problem = structureVerdict(theme.sections, result);
+                addParagraph(card, "verdict", problem
+                    ? `✗ Structure check failed: ${problem}`
+                    : `✓ Every original id, label, and section name is intact. ${theme.sections.length} → ${result.sections.length} sections, ${result.promptsRewritten} prompt${result.promptsRewritten === 1 ? "" : "s"} rewritten.`);
+                lines.push(problem ? `STRUCTURE PROBLEM: ${problem}` : `ok: ${theme.sections.length} -> ${result.sections.length} sections, ${result.promptsRewritten} prompts rewritten`);
+
+                if (result.changes.length > 0) {
+                    const ul = document.createElement("ul");
+                    ul.className = "changes";
+                    result.changes.forEach(c => {
+                        const li = document.createElement("li");
+                        li.textContent = `${c.kind}: ${c.name} — ${c.reason}`;
+                        ul.appendChild(li);
+                        lines.push(`  ${c.kind}: ${c.name} — ${c.reason}`);
+                    });
+                    card.appendChild(ul);
+                }
+                showDiff(card, theme.sections, result);
+                result.sections.forEach(s => s.fields.forEach(f => {
+                    const orig = theme.sections.find(o => o.id === s.id)?.fields.find(of => of.id === f.id);
+                    if (!orig || orig.prompt !== f.prompt) lines.push(`  [${s.name} / ${f.label}] ${f.prompt}`);
+                }));
+            }
+
+            addParagraph(card, "meta", `${ms} ms`);
+            report.push(lines.join("\n"));
+        }
+
+        async function runThemes(themeIds) {
+            if (running || !signedIn) return;
+            running = true;
+            stopRequested = false;
+            syncButtons();
+
+            try {
+                for (const themeId of themeIds) {
+                    if (stopRequested) break;
+                    await runOne(themeId);
+                }
+            } finally {
+                running = false;
+                stopRequested = false;
+                $("status").textContent = "";
+                syncButtons();
+            }
+        }
+
+        $("run-all").addEventListener("click", () => runThemes(DEFAULT_THEMES.map(t => t.themeId)));
+        $("stop").addEventListener("click", () => { stopRequested = true; $("status").textContent = "Stopping..."; });
+
+        $("copy-report").addEventListener("click", async () => {
+            const btn = $("copy-report");
+            try {
+                await navigator.clipboard.writeText(report.length ? report.join("\n\n") : "(no runs yet)");
+                btn.textContent = "Copied!";
+            } catch {
+                btn.textContent = "Couldn't copy";
+            }
+            setTimeout(() => { btn.textContent = "Copy report"; }, 1500);
+        });
+
+        syncButtons();
+    </script>
+</body>
+
+</html>
