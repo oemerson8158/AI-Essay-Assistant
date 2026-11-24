@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Custom template check</title>
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="../css/base.css">
+    <style>
+        body { padding: 24px; }
+        main { max-width: 1000px; margin: 0 auto; }
+        h1 { font-size: 1.3em; margin: 0 0 6px; }
+        .panel { background: var(--color-surface); border: 1px solid var(--color-border-soft); border-radius: var(--radius-lg); padding: 16px; margin-bottom: 16px; }
+        textarea { width: 100%; height: 160px; padding: 8px; font-size: 14px; font-family: inherit; border: 1px solid var(--color-border); border-radius: var(--radius-md); margin-bottom: 4px; }
+        textarea.answer { height: 56px; margin-bottom: 10px; }
+        .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+        .row button { height: 34px; font-size: 14px; }
+        #status { min-height: 1.4em; }
+        .meta { font-size: 0.88em; color: var(--color-text-muted); margin: 6px 0; }
+        .section-card { border-top: 1px solid var(--color-border-soft); padding: 10px 0; }
+        .section-card h3 { font-size: 1em; margin: 0 0 4px; }
+        .section-card p { margin: 0 0 6px; font-size: 0.92em; }
+        .section-card ul { margin: 0; padding-left: 20px; font-size: 0.9em; line-height: 1.5; }
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 12px; font-weight: 700; background: #eaf7e6; color: #2f6b23; }
+        .badge-err { background: var(--color-danger-bg); color: var(--color-danger-text); }
+        details { margin-top: 8px; font-size: 0.9em; }
+        summary { cursor: pointer; }
+        table.groups { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 6px; }
+        table.groups th, table.groups td { text-align: left; padding: 4px 6px; border-top: 1px solid var(--color-border-soft); }
+    </style>
+</head>
+
+<body>
+    <main>
+        <h1>Custom template check</h1>
+        <p class="tool-hint">Developer page for <code>modules/customTemplate.js</code> and the worker's <code>/template/outline-map</code> and <code>/template/custom</code> routes. It calls the real worker and the real model, so you must be signed in (sign in on the main app first, then open or reload this page). A long source takes a few minutes, because the AI's per-minute limit is shared. Try about 10,000 characters first, then about 40,000, to see several map sections and the countdown.</p>
+
+        <div class="panel">
+            <p id="auth-line" class="tool-hint" style="margin-bottom:8px;">Checking sign-in...</p>
+            <p id="status" class="tool-hint" style="margin-bottom:0;" role="status"></p>
+        </div>
+
+        <div class="panel">
+            <label for="source-text">Source material (an essay, article, lab report, or story)</label>
+            <textarea id="source-text"></textarea>
+            <p id="counter" class="char-count">0 / 60,000 characters</p>
+            <div class="row">
+                <label for="source-file" style="margin:0; font-weight:normal;">Or upload a .txt, .pdf, or .docx file:</label>
+                <input type="file" id="source-file" accept=".txt,.pdf,.docx">
+                <button id="remove-file" type="button" class="btn-secondary" hidden>Remove file</button>
+            </div>
+            <p id="file-line" class="tool-hint" style="margin:0;"></p>
+        </div>
+
+        <div class="panel">
+            <div class="row">
+                <strong>Answer set (used by "Build and personalize"):</strong>
+                <button type="button" class="btn-secondary" data-preset="filled">Everything filled in</button>
+                <button type="button" class="btn-secondary" data-preset="blank">Everything blank</button>
+                <button type="button" class="btn-secondary" data-preset="mixed">Mix of "no" and real</button>
+            </div>
+            <label for="a-about">About</label>
+            <textarea id="a-about" class="answer" maxlength="1500"></textarea>
+            <label for="a-prompt">Assignment prompt</label>
+            <textarea id="a-prompt" class="answer" maxlength="1500"></textarea>
+            <label for="a-requirements">Requirements</label>
+            <textarea id="a-requirements" class="answer" maxlength="1500"></textarea>
+        </div>
+
+        <div class="panel">
+            <div class="row">
+                <button id="build" type="button" class="btn-primary" disabled>Build</button>
+                <button id="build-personalize" type="button" class="btn-primary" disabled>Build and personalize</button>
+                <button id="stop" type="button" class="btn-secondary" disabled>Stop</button>
+                <button id="copy-report" type="button" class="btn-secondary">Copy report</button>
+            </div>
+        </div>
+
+        <div id="results"></div>
+    </main>
+
+    <script type="module">
+        import { buildCustomTemplate } from "../modules/customTemplate.js";
+        import { personalizeTemplate, cleanAnswers, hasAnyAnswer } from "../modules/personalize.js";
+        import { extractFile, extractPastedText, isSupportedFile, ExtractError, CUSTOM_TEMPLATE_MAX_CHARS } from "../modules/extract.js";
+        import { onAuthChange } from "../modules/firebase.js";
+
+        const PRESETS = {
+            filled: {
+                about: "How social media use affects the sleep habits of high school students",
+                prompt: "Evaluate whether high schools should start the school day later. Use evidence to support your position.",
+                requirements: "Five paragraphs. Must include a counterargument and cite at least three sources."
+            },
+            blank: { about: "", prompt: "", requirements: "" },
+            mixed: { about: "Symbolism and the American Dream in The Great Gatsby", prompt: "no", requirements: "N/A" }
+        };
+
+        const $ = id => document.getElementById(id);
+        const resultsEl = $("results");
+        const report = [];
+        let signedIn = false;
+        let running = false;
+        let stopRequested = false;
+        let fileExtracted = null;   // from the file input, if any
+        let fileReading = false;
+        let runId = 0;
+
+        function setPreset(name) {
+            $("a-about").value = PRESETS[name].about;
+            $("a-prompt").value = PRESETS[name].prompt;
+            $("a-requirements").value = PRESETS[name].requirements;
+        }
+        document.querySelectorAll("[data-preset]").forEach(b => b.addEventListener("click", () => setPreset(b.dataset.preset)));
+        setPreset("filled");
+
+        function currentAnswers() {
+            return { about: $("a-about").value, prompt: $("a-prompt").value, requirements: $("a-requirements").value };
+        }
+
+        function setStatus(text) { $("status").textContent = text; }
+
+        function sourceLength() { return $("source-text").value.trim().length; }
+
+        function syncButtons() {
+            const length = sourceLength();
+            const hasSource = !!fileExtracted || (length > 0 && length <= CUSTOM_TEMPLATE_MAX_CHARS);
+            const disabled = !signedIn || running || fileReading || !hasSource;
+            $("build").disabled = disabled;
+            $("build-personalize").disabled = disabled;
+            $("stop").disabled = !running;
+
+            $("counter").textContent = `${length.toLocaleString("en-US")} / ${CUSTOM_TEMPLATE_MAX_CHARS.toLocaleString("en-US")} characters`;
+            $("counter").classList.toggle("char-count-over", length > CUSTOM_TEMPLATE_MAX_CHARS);
+            $("source-text").disabled = !!fileExtracted;
+            $("remove-file").hidden = !fileExtracted;
+        }
+        $("source-text").addEventListener("input", syncButtons);
+
+        // ---- file input ----
+        $("source-file").addEventListener("change", async () => {
+            const file = $("source-file").files[0];
+            if (!file) return;
+            fileExtracted = null;
+            $("file-line").textContent = "";
+
+            if (!isSupportedFile(file)) {
+                $("file-line").textContent = "Unsupported file type. Please use a .txt, .pdf, or .docx file.";
+                $("source-file").value = "";
+                syncButtons();
+                return;
+            }
+
+            fileReading = true;
+            $("file-line").textContent = "Reading file...";
+            syncButtons();
+            try {
+                fileExtracted = await extractFile(file, {
+                    maxChars: CUSTOM_TEMPLATE_MAX_CHARS,
+                    onProgress: ({ done, total }) => { $("file-line").textContent = `Reading page ${done} of ${total}...`; }
+                });
+                $("file-line").textContent = `Using ${file.name}: ${fileExtracted.pageCount} page(s), ${fileExtracted.charCount.toLocaleString("en-US")} characters.`
+                    + (fileExtracted.warnings.length ? " Warnings: " + fileExtracted.warnings.join(" ") : "");
+            } catch (err) {
+                $("file-line").textContent = err instanceof ExtractError ? err.message : "Couldn't read that file.";
+                $("source-file").value = "";
+                if (!(err instanceof ExtractError)) console.error(err);
+            }
+            fileReading = false;
+            syncButtons();
+        });
+        $("remove-file").addEventListener("click", () => {
+            fileExtracted = null;
+            $("source-file").value = "";
+            $("file-line").textContent = "";
+            syncButtons();
+        });
+
+        // ---- showing a result ----
+        function el(tag, text, className) {
+            const node = document.createElement(tag);
+            if (text !== undefined) node.textContent = text;
+            if (className) node.className = className;
+            return node;
+        }
+
+        function showError(title, message) {
+            const panel = el("div", undefined, "panel");
+            panel.append(el("span", "Failed", "badge badge-err"), el("p", `${title}: ${message}`, "meta"));
+            resultsEl.prepend(panel);
+            report.push(`${title}: FAILED: ${message}`, "");
+        }
+
+        function showTemplate({ title, category, sections, groups, seconds, changes }) {
+            const panel = el("div", undefined, "panel");
+            panel.append(el("span", "OK", "badge"));
+            panel.append(el("h2", `${title}: category "${category}", ${sections.length} sections (${seconds}s)`));
+            report.push(`${title}: category=${category} sections=${sections.length} time=${seconds}s`);
+
+            (changes || []).forEach(c => {
+                panel.append(el("p", `${c.kind}: ${c.name}. ${c.reason}`, "meta"));
+                report.push(`  change ${c.kind}: ${c.name} (${c.reason})`);
+            });
+
+            sections.forEach((section, i) => {
+                const card = el("div", undefined, "section-card");
+                card.append(el("h3", `(Section ${i + 1}) ${section.name}`), el("p", section.purpose));
+                report.push(`  (Section ${i + 1}) ${section.name}`, `    purpose: ${section.purpose}`);
+                const list = el("ul");
+                section.fields.forEach(f => {
+                    list.append(el("li", `${f.label}${f.optional ? " (optional)" : ""}: ${f.prompt}`));
+                    report.push(`    - ${f.label}${f.optional ? " (optional)" : ""}: ${f.prompt}`);
+                });
+                card.append(list);
+                panel.append(card);
+            });
+
+            if (groups) {
+                const details = el("details");
+                details.append(el("summary", `Condensed map (${groups.length} groups)`));
+                const table = el("table", undefined, "groups");
+                const head = el("tr");
+                ["Paragraphs", "Role", "Note"].forEach(t => head.append(el("th", t)));
+                table.append(head);
+                groups.forEach(g => {
+                    const tr = el("tr");
+                    tr.append(el("td", `${g.from}-${g.to}`), el("td", g.role), el("td", g.note));
+                    table.append(tr);
+                });
+                details.append(table);
+                panel.append(details);
+            }
+
+            report.push("");
+            resultsEl.prepend(panel);
+        }
+
+        // ---- running ----
+        async function run(withPersonalize) {
+            if (running) return;
+
+            let extracted = fileExtracted;
+            if (!extracted) {
+                try {
+                    extracted = extractPastedText($("source-text").value, { maxChars: CUSTOM_TEMPLATE_MAX_CHARS, name: "Pasted text" });
+                } catch (err) {
+                    setStatus(err instanceof ExtractError ? err.message : "Couldn't read that text.");
+                    return;
+                }
+            }
+
+            running = true;
+            stopRequested = false;
+            const myRun = ++runId;
+            const isStale = () => runId !== myRun;
+            const shouldStop = () => stopRequested || isStale();
+            syncButtons();
+
+            const started = Date.now();
+            const seconds = () => Math.round((Date.now() - started) / 1000);
+            let resume = null;
+
+            try {
+                const built = await buildCustomTemplate({
+                    extracted, resume, isStale, shouldStop, setStatus,
+                    onProgress: ({ done, total }) => setStatus(`Read ${done} of ${total} sections.`)
+                });
+
+                if (built.cancelled) { setStatus("Stopped."); return; }
+                if (!built.ok) {
+                    const wait = built.retryAfterSeconds ? ` (the worker asked for ${built.retryAfterSeconds}s)` : "";
+                    showError("Build", built.message + wait);
+                    setStatus("Build failed.");
+                    return;
+                }
+
+                showTemplate({ title: "Built template", category: built.template.category, sections: built.template.sections, groups: built.groups, seconds: seconds() });
+
+                if (withPersonalize) {
+                    const answers = currentAnswers();
+                    if (!hasAnyAnswer(cleanAnswers(answers))) {
+                        setStatus("Built. (All answers are blank, so there is nothing to personalize with.)");
+                        return;
+                    }
+                    setStatus("Personalizing...");
+                    const result = await personalizeTemplate({ sections: built.template.sections, answers, isStale, shouldStop, setStatus });
+                    if (result.cancelled) { setStatus("Stopped."); return; }
+                    if (!result.ok) { showError("Personalize", result.message); setStatus("Personalize failed."); return; }
+                    showTemplate({
+                        title: result.fallback ? "Personalized (fallback: unchanged)" : "Personalized template",
+                        category: built.template.category,
+                        sections: result.sections,
+                        changes: result.changes,
+                        seconds: seconds()
+                    });
+                }
+                setStatus(`Done in ${seconds()}s.`);
+            } catch (err) {
+                console.error(err);
+                showError("Run", "Something unexpected went wrong (see the console).");
+                setStatus("Failed.");
+            } finally {
+                running = false;
+                syncButtons();
+            }
+        }
+
+        $("build").addEventListener("click", () => run(false));
+        $("build-personalize").addEventListener("click", () => run(true));
+        $("stop").addEventListener("click", () => { stopRequested = true; setStatus("Stopping..."); });
+        $("copy-report").addEventListener("click", async () => {
+            try {
+                await navigator.clipboard.writeText(report.join("\n"));
+                setStatus("Report copied.");
+            } catch {
+                setStatus("Couldn't copy. Select the results and copy them by hand.");
+            }
+        });
+
+        onAuthChange(user => {
+            signedIn = !!user;
+            $("auth-line").textContent = user ? `Signed in as ${user.email || user.uid}.` : "Not signed in. Sign in on the main app, then reload this page.";
+            syncButtons();
+        });
+        syncButtons();
+    </script>
+</body>
+
+</html>

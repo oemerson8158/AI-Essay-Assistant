@@ -489,6 +489,395 @@ label {
 }
 
 /***************************************************************************
+ * TEMPLATE WIZARD (wizard.js) AND TEMPLATE EDITOR (templateEditor.js)
+ *  Screens A, B, and C of the template wizard share these styles. Inputs are
+ *  16 px so iPad Safari doesn't zoom, and tap targets are about 42 px.
+ ***************************************************************************/
+
+/* The counter under a text box: right-aligned, red and bold when over */
+.char-count {
+  margin: 4px 0 0;
+  text-align: right;
+  font-size: 0.8em;
+  color: var(--color-text-muted);
+}
+
+.char-count-over {
+  color: var(--color-danger);
+  font-weight: bold;
+}
+
+/* Wizard: a centered card, wider than the sign-in card */
+#wizard-screen {
+  padding: 20px;
+}
+
+.wizard-card {
+  width: 100%;
+  max-width: 640px;
+  margin: 20px auto;
+  padding: 26px;
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.wizard-header,
+.tpl-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.wizard-heading,
+.tpl-heading {
+  flex: 1 1 auto;
+  margin: 0;
+  font-size: 1.3em;
+  overflow-wrap: anywhere;
+}
+
+.wizard-heading:focus,
+.tpl-heading:focus {
+  outline: none;
+}
+
+.wizard-field {
+  margin-bottom: 18px;
+}
+
+.wizard-field textarea,
+.wizard-field select,
+.wizard-field input[type="file"] {
+  width: 100%;
+  padding: 10px;
+  font-size: 16px;
+  font-family: inherit;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.wizard-field textarea {
+  resize: vertical;
+}
+
+.wizard-field select {
+  min-height: 42px;
+}
+
+.wizard-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.wizard-buttons-start {
+  justify-content: flex-start;
+}
+
+.wizard-link {
+  min-height: 42px;
+  margin: 0 0 14px;
+  padding: 0;
+  font-size: 0.95em;
+  color: var(--color-primary);
+  background: none;
+  border: none;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.wizard-status {
+  min-height: 1.4em;
+  margin: 8px 0 0;
+  font-size: 0.9em;
+  color: var(--color-text-muted);
+  overflow-wrap: anywhere;
+}
+
+.wizard-error {
+  color: var(--color-danger);
+}
+
+.wizard-warning {
+  margin: 6px 0 0;
+  padding: 8px 10px;
+  font-size: 0.85em;
+  color: #6b4e00;
+  background: #fff7e0;
+  border: 1px solid #f0d78c;
+  border-radius: var(--radius-md);
+}
+
+.wizard-file-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 8px 0 0;
+  font-size: 0.9em;
+  overflow-wrap: anywhere;
+}
+
+.wizard-problem {
+  margin: 0 0 8px;
+  padding: 10px 12px;
+  color: var(--color-danger-text);
+  background: var(--color-danger-bg);
+  border: 1px solid var(--color-danger-border);
+  border-radius: var(--radius-md);
+}
+
+/* Template editor (Screen C) */
+#template-editor-screen {
+  padding: 20px;
+}
+
+#tpl-editor {
+  width: 100%;
+  max-width: 760px;
+  margin: 20px auto;
+}
+
+.tpl-field {
+  margin-bottom: 16px;
+}
+
+.tpl-input,
+.tpl-textarea {
+  width: 100%;
+  padding: 10px;
+  font-size: 16px;
+  font-family: inherit;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.tpl-input {
+  min-height: 42px;
+}
+
+.tpl-textarea {
+  resize: vertical;
+  overflow: hidden;
+  line-height: 1.4;
+}
+
+.tpl-field-hint {
+  margin: 6px 0 0;
+}
+
+.tpl-notice {
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  font-size: 0.9em;
+  color: #6b4e00;
+  background: #fff7e0;
+  border: 1px solid #f0d78c;
+  border-radius: var(--radius-md);
+}
+
+.tpl-banner {
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  background: #eef6fc;
+  border: 1px solid #b9d9f0;
+  border-radius: var(--radius-md);
+}
+
+.tpl-banner-title {
+  margin: 0 0 8px;
+  font-size: 0.95em;
+}
+
+.tpl-banner-list {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 0.9em;
+  line-height: 1.5;
+}
+
+.tpl-banner-note {
+  margin: 8px 0 0;
+}
+
+.tpl-packet {
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  font-size: 0.9em;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius-md);
+  overflow-wrap: anywhere;
+}
+
+.tpl-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0 0 14px;
+  padding: 0;
+  list-style: none;
+}
+
+.tpl-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius-lg);
+}
+
+.tpl-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+}
+
+.tpl-card-toggle {
+  flex: 1 1 260px;
+  min-height: 42px;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  padding: 6px 8px;
+  font-size: 15px;
+  text-align: left;
+  color: var(--color-text);
+  background: none;
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+.tpl-card-toggle:hover {
+  background: var(--color-surface-alt);
+}
+
+.tpl-card-marker {
+  font-size: 0.85em;
+  font-weight: bold;
+  color: var(--color-text-muted);
+}
+
+.tpl-card-name {
+  font-weight: bold;
+  overflow-wrap: anywhere;
+}
+
+.tpl-card-count {
+  font-size: 0.8em;
+  color: var(--color-text-muted);
+}
+
+.tpl-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tpl-action {
+  min-height: 42px;
+  padding: 0 12px;
+  font-size: 14px;
+  color: var(--color-text);
+  background: var(--color-neutral);
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+.tpl-action:hover:not(:disabled) {
+  background: var(--color-neutral-hover);
+}
+
+.tpl-action:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.tpl-action-danger {
+  color: var(--color-danger-text);
+}
+
+.tpl-card-body {
+  padding: 4px 16px 16px;
+  border-top: 1px solid var(--color-border-soft);
+}
+
+.tpl-card-body[hidden] {
+  display: none;
+}
+
+.tpl-card-body .tpl-field:first-child {
+  margin-top: 14px;
+}
+
+.tpl-field-group {
+  margin-top: 8px;
+  padding: 12px;
+  background: var(--color-surface-alt);
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius-md);
+}
+
+.tpl-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+}
+
+.tpl-check input {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+}
+
+.tpl-check label {
+  margin: 0;
+  font-weight: normal;
+}
+
+.tpl-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.tpl-status {
+  flex: 1 1 200px;
+  margin: 0;
+  font-size: 0.9em;
+  color: var(--color-text-muted);
+}
+
+.tpl-status-error {
+  color: var(--color-danger);
+}
+
+/* Read aloud by screen readers, not seen */
+.tpl-live {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/***************************************************************************
  * DIALOGS (modal.js)
  ***************************************************************************/
 

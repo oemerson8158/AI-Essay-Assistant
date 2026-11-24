@@ -22,6 +22,8 @@ import { showScreen } from "./modules/router.js";
 import "./modules/help.js"; // registers the "?" popup's listeners
 import { initLogin, resetLoginForm } from "./modules/login.js";
 import { initHome, loadHome } from "./modules/home.js";
+import { initWizard } from "./modules/wizard.js";
+import { initTemplateEditor } from "./modules/templateEditor.js";
 import { initPlaceholders } from "./modules/placeholders.js";
 
 // If Firebase's listener hasn't reported by now, ask Firebase directly.
@@ -56,6 +58,8 @@ function reportStartupError(err) {
 [
   ["login", initLogin],
   ["home", initHome],
+  ["template wizard", initWizard],
+  ["template editor", initTemplateEditor],
   ["placeholders", initPlaceholders]
 ].forEach(([name, init]) => {
   try {
@@ -71,10 +75,11 @@ function reportStartupError(err) {
 //  Any screen can ask for Home by emitting HOME_REQUESTED.
 ///////////////////////////////////////////////////////////////////////////
 
-on(EVENTS.HOME_REQUESTED, () => {
+// detail is optional: { view: "templates" | "documents" } picks the list.
+on(EVENTS.HOME_REQUESTED, (detail) => {
   if (!state.currentUser) return;
   showScreen("home");
-  loadHome();
+  loadHome(detail && detail.view);
 });
 
 ///////////////////////////////////////////////////////////////////////////

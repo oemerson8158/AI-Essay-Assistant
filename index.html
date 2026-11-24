@@ -71,20 +71,16 @@
         <div id="home-list"></div>
     </div>
 
-    <!-- Template wizard screens A, B, and C. Built in Phase 4. -->
+    <!-- Template wizard: Screen A (questions) and Screen B (theme or custom
+         source), plus the progress and problem views. Built by wizard.js. -->
     <div id="wizard-screen" style="display:none;">
-        <p class="tool-hint">Template wizard (Phase 4).</p>
+        <div id="wizard"></div>
     </div>
 
-    <!-- Template editor, reached from the Home menu. Placeholder until Phase 4
-         (placeholders.js). -->
+    <!-- Screen C: the preview for a new template and the editor for a saved
+         one. Built by templateEditor.js. -->
     <div id="template-editor-screen" style="display:none;">
-        <div class="placeholder-card">
-            <button type="button" id="template-placeholder-home" class="btn-secondary">← Home</button>
-            <h2 id="template-placeholder-title"></h2>
-            <p id="template-placeholder-info" class="tool-hint"></p>
-            <p class="tool-hint">The template editor is built in Phase 4.</p>
-        </div>
+        <div id="tpl-editor"></div>
     </div>
 
     <!-- Document editor. Placeholder until Phase 5 (placeholders.js). -->

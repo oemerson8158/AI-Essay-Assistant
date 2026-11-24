@@ -30,8 +30,14 @@ const EVENTS = {
   OPEN_TEMPLATE: "template:open",
 
   // Something (an editor's Home button, say) wants to go back to the Home
-  // screen. app.js shows Home and reloads its lists.
-  HOME_REQUESTED: "home:requested"
+  // screen. app.js shows Home and reloads its lists. detail is optional:
+  // { view: "templates" | "documents" } picks which list Home shows.
+  HOME_REQUESTED: "home:requested",
+
+  // The template wizard (wizard.js) and the template editor (templateEditor.js).
+  WIZARD_REQUESTED: "wizard:open",    // Home asks for a fresh wizard (no detail)
+  WIZARD_RESUME: "wizard:resume",     // Screen C's Back asks the wizard to show Screen B again, state intact
+  TEMPLATE_PREVIEW: "template:preview" // the wizard hands a draft to Screen C (see the top of templateEditor.js)
 };
 
 // Shared application data. Later phases add keys here (the open document,

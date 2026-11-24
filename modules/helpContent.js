@@ -15,6 +15,14 @@
 ///////////////////////////////////////////////////////////////////////////
 
 const HELP_CONTENT = {
+  wizard: {
+    title: "Making a template",
+    steps: [
+      "This is a sample tutorial. Real step-by-step help is written in Phase 12.",
+      "Answer the questions about your writing, or leave them blank. Then choose a theme, or build a custom one from a sample essay.",
+      "On the review screen you can rename sections, change what each part asks you to write, duplicate, remove, or move sections, then save."
+    ]
+  },
   home: {
     title: "Home",
     steps: [

@@ -11,19 +11,21 @@
 //
 //  This module doesn't open the editors. Clicking a row (or Edit, or a new
 //  document) emits OPEN_DOCUMENT or OPEN_TEMPLATE on the event bus, and
-//  whichever module handles that screen listens. Right now that is
-//  placeholders.js; Phases 4 and 5 replace it.
+//  whichever module handles that screen listens (templateEditor.js for
+//  templates; placeholders.js for documents until Phase 5). Create Template
+//  emits WIZARD_REQUESTED, which wizard.js answers.
 //
 //  Oliver Emerson - 2026
 ///////////////////////////////////////////////////////////////////////////
 
 import { state, setState, on, emit, EVENTS } from "./state.js";
-import { openModal, closeModal, confirmDialog } from "./modal.js";
+import { closeModal, confirmDialog } from "./modal.js";
 import {
   signOutUser,
   listUserTemplates,
   getTemplateRecord,
   createTemplateRecord,
+  saveTemplateRecord,
   renameTemplateRecord,
   deleteTemplateRecord,
   listUserDocuments,
@@ -32,7 +34,8 @@ import {
   renameDocumentRecord,
   deleteDocumentRecord
 } from "./firebase.js";
-import { THEME_OPTIONS, getThemeName, buildTemplateFromTheme } from "./defaultTemplates.js";
+import { copyAllSources } from "./sourceStore.js";
+import { getThemeName } from "./defaultTemplates.js";
 
 const VIEW_STORAGE_KEY = "essayAssistant.homeView";
 const MAX_TITLE_LENGTH = 120;
@@ -73,11 +76,13 @@ function editedText(record) {
 //  noun/untitled — wording; list/get/create/rename/remove — the firebase.js
 //  helpers; meta(record) — the row's second line; copyData(record) — the
 //  fields a copy starts with (never ownerId, timestamps, or revision, which
-//  the create helpers set); openEvent — what clicking a row emits.
+//  the create helpers set); openEvent — what clicking a row emits;
+//  afterCreate(fresh, newId) — optional: runs after a copy's record exists, to
+//  copy what is stored beside it (sources). If it throws, the half-made copy
+//  is deleted.
 //
-//  Copies don't include sources (a DBQ packet, a document's Material) yet.
-//  Nothing can have sources before Phase 4, which adds sourceStore.js's
-//  copy helper and should be called from copyData's callers here.
+//  A template's DBQ packet is copied by afterCreate. A document's sources
+//  (and their vectors) will be copied the same way in Phase 7.
 ///////////////////////////////////////////////////////////////////////////
 
 const VIEWS = {
@@ -100,8 +105,13 @@ const VIEWS = {
       answers: record.answers || { about: "", prompt: "", requirements: "" },
       sections: record.sections || [],
       changes: record.changes || [],
-      hasPacket: record.hasPacket === true
+      hasPacket: false // set to true by afterCreate once the packet has been copied
     }),
+    afterCreate: async (fresh, newId) => {
+      if (fresh.hasPacket !== true) return;
+      await copyAllSources("template", fresh.id, "template", newId);
+      await saveTemplateRecord(newId, { hasPacket: true });
+    },
     deleteNote: "Documents you already made from it keep their own copy."
   },
   documents: {
@@ -129,6 +139,7 @@ const VIEWS = {
       tabs: record.tabs || [],
       format: record.format || undefined
     }),
+    afterCreate: async () => {}, // Phase 7 copies a document's sources here
     deleteNote: ""
   }
 };
@@ -462,13 +473,16 @@ function startRename(name, record, titleEl) {
 //  Outputs: Creates a new record in the student's account titled
 //    "Copy of <title>" and reloads the list
 //  Summary: Copies the last saved version, read fresh from Firestore rather
-//    than from the list on screen.
+//    than from the list on screen. Then the view's afterCreate hook copies
+//    what is stored beside the record (a template's packet). If that fails,
+//    the half-made copy is deleted, so no broken copy is left in the list.
 ///////////////////////////////////////////////////////////////////////////
 async function makeCopy(name, record) {
   const view = VIEWS[name];
   const user = state.currentUser;
   if (!user) return;
 
+  let newId = null;
   try {
     const fresh = await view.get(record.id);
     if (!fresh) {
@@ -481,12 +495,24 @@ async function makeCopy(name, record) {
     const data = view.copyData(fresh);
     Object.keys(data).forEach(key => { if (data[key] === undefined) delete data[key]; });
 
-    await view.create(user.uid, {
+    newId = await view.create(user.uid, {
       ...data,
       title: `Copy of ${fresh.title || view.untitled}`.slice(0, MAX_TITLE_LENGTH)
     });
+
+    if (view.afterCreate) await view.afterCreate(fresh, newId);
   } catch (err) {
     console.error(`HOME: failed to copy ${view.noun}:`, err);
+
+    // Don't leave a half-made copy behind. Cleaning up must never throw.
+    if (newId) {
+      try {
+        await view.remove(newId);
+      } catch (cleanupErr) {
+        console.error(`HOME: couldn't remove the half-made ${view.noun} copy:`, cleanupErr);
+      }
+    }
+
     alert(`Couldn't make a copy of that ${view.noun}. Try again in a moment.`);
     return;
   }
@@ -545,7 +571,7 @@ async function deleteRecord(name, record, itemEl) {
 ///////////////////////////////////////////////////////////////////////////
 function handleCreate() {
   if (currentView === "templates") {
-    openCreateTemplateDialog();
+    emit(EVENTS.WIZARD_REQUESTED);
   } else {
     createDocument();
   }
@@ -584,94 +610,26 @@ async function createDocument() {
 }
 
 ///////////////////////////////////////////////////////////////////////////
-//  Function: openCreateTemplateDialog
-//  Inputs: None
-//  Outputs: Shows a dialog to start a template from a built-in theme or from
-//    a blank one, then adds it to the Templates list
-//  Summary: A stand-in until Phase 4's template wizard (questions, theme,
-//    personalization, preview). When the wizard exists, change handleCreate
-//    to show the wizard screen instead and delete this function. Templates
-//    made here are the unpersonalized built-in ones.
-///////////////////////////////////////////////////////////////////////////
-function openCreateTemplateDialog() {
-  const content = document.createElement("div");
-
-  const text = document.createElement("p");
-  text.className = "modal-text";
-  text.textContent = "The template wizard is coming in a later update. For now, start from one of the built-in themes, or from a blank template.";
-
-  const label = document.createElement("label");
-  label.htmlFor = "create-template-theme";
-  label.textContent = "Start from";
-
-  const select = document.createElement("select");
-  select.id = "create-template-theme";
-  select.className = "modal-select";
-
-  const blank = document.createElement("option");
-  blank.value = "";
-  blank.textContent = "Blank template (no sections)";
-  select.appendChild(blank);
-  THEME_OPTIONS.forEach(({ themeId, name }) => {
-    const option = document.createElement("option");
-    option.value = themeId;
-    option.textContent = name;
-    select.appendChild(option);
-  });
-
-  const error = document.createElement("p");
-  error.className = "modal-error";
-
-  content.append(text, label, select, error);
-
-  openModal("Create Template", content, [
-    { label: "Cancel", className: "btn-secondary", onClick: closeModal },
-    {
-      label: "Create",
-      className: "btn-primary",
-      onClick: async (btn) => {
-        const user = state.currentUser;
-        if (!user) return;
-
-        btn.disabled = true;
-        btn.textContent = "Creating...";
-        error.textContent = "";
-
-        const data = select.value
-          ? buildTemplateFromTheme(select.value)
-          : { title: VIEWS.templates.untitled, themeId: "custom", category: "argumentative", sections: [] };
-
-        try {
-          await createTemplateRecord(user.uid, data);
-        } catch (err) {
-          console.error("HOME: failed to create template:", err);
-          error.textContent = "Couldn't create the template. Try again in a moment.";
-          btn.disabled = false;
-          btn.textContent = "Create";
-          return;
-        }
-
-        closeModal();
-        cache.templates = null;
-        showView("templates");
-      }
-    }
-  ]);
-}
-
-///////////////////////////////////////////////////////////////////////////
 // Screen lifecycle
 ///////////////////////////////////////////////////////////////////////////
 
 ///////////////////////////////////////////////////////////////////////////
 //  Function: loadHome
-//  Inputs: None (reads state.currentUser)
-//  Outputs: Shows who is signed in and fetches the current view's list
+//  Inputs: view (optional: "templates" or "documents"); also reads
+//    state.currentUser
+//  Outputs: Shows who is signed in and fetches the chosen view's list. A
+//    view that is given becomes the current view (and is remembered);
+//    otherwise the current view stays.
 //  Summary: Called each time Home is shown, so the lists are fresh.
 ///////////////////////////////////////////////////////////////////////////
-function loadHome() {
+function loadHome(view) {
   const user = state.currentUser;
   if (!user) return;
+
+  if (view === "templates" || view === "documents") {
+    currentView = view;
+    saveView(view);
+  }
 
   const who = user.email || user.displayName || "your account";
   $("home-user").textContent = `Signed in as ${who}.`;
