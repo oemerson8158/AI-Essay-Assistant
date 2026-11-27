@@ -327,6 +327,9 @@ async function personalizeTemplate({
 
   // The worker skipped the AI or fell back on its own.
   if (data.personalized !== true) {
+    if (data.fallback === true && typeof data.reason === "string") {
+      console.error(`PERSONALIZE: the worker used the standard template (${data.reason}).`);
+    }
     return unchanged(sections, {
       skipped: data.skipped === true,
       fallback: data.fallback === true,

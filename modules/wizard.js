@@ -310,7 +310,7 @@ function buildQuestionsView() {
   ui.headings.questions = heading;
 
   const view = h("div", { class: "wizard-card" }, row,
-    h("p", { class: "tool-hint", text: "Tell us about your writing. Every question is optional." })
+    h("p", { class: "tool-hint", text: "Tell the tool about your writing. Every question is optional." })
   );
 
   ui.answerInputs = {};
